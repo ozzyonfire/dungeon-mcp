@@ -86,6 +86,37 @@ export type Snapshot = {
   events: string[];
 };
 
+export type ObserverSnapshot = {
+  committed_tick: number;
+  map: {
+    ascii: string[];
+    legend: Record<string, string>;
+    width: number;
+    height: number;
+  };
+  players: Array<{
+    id: string;
+    name: string;
+    pos: Pos;
+    hp: number;
+    max_hp: number;
+    alive: boolean;
+  }>;
+  mobs: Array<{
+    id: string;
+    kind: string;
+    pos: Pos;
+    hp: number;
+    max_hp: number;
+    alive: boolean;
+  }>;
+  items: Array<{
+    id: string;
+    kind: string;
+    pos: Pos;
+  }>;
+};
+
 export const LEGEND: Record<string, string> = {
   "#": "Wall",
   ".": "Floor",

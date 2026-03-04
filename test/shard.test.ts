@@ -58,4 +58,17 @@ describe("shard integration", () => {
     shardA.stop();
     shardB.stop();
   });
+
+  test("observer snapshot contains map and entities", () => {
+    const shard = new GameShard(config());
+    const joined = shard.joinPlayer("watch-target");
+    const observer = shard.getObserverSnapshot();
+
+    expect(observer.committed_tick).toBeGreaterThanOrEqual(0);
+    expect(observer.map.ascii.length).toBe(config().height);
+    expect(observer.map.ascii[0]?.length).toBe(config().width);
+    expect(observer.players.some((p) => p.id === joined.player_id)).toBeTrue();
+    expect(observer.mobs.length).toBe(config().initialMobCount);
+    expect(observer.items.length).toBe(config().initialItemCount);
+  });
 });

@@ -1,6 +1,6 @@
 import { applyIntent, type ActionResult } from "./actions";
 import { generateDungeon, pickSpawn, seededRng } from "./gen/dungeon";
-import { renderForPlayer } from "./render/ascii";
+import { renderForObserver, renderForPlayer } from "./render/ascii";
 import {
   canHear,
   canSee,
@@ -11,6 +11,7 @@ import {
   type Mob,
   type Player,
   type Pos,
+  type ObserverSnapshot,
   type Snapshot,
   type WorldState,
 } from "./world";
@@ -72,6 +73,7 @@ export class GameShard {
   private waiters: Waiter[] = [];
 
   private loop: ReturnType<typeof setInterval> | undefined;
+  private tickListeners = new Set<(snapshot: ObserverSnapshot) => void>();
 
   private nextPlayerId = 1;
 
@@ -181,6 +183,42 @@ export class GameShard {
     return this.buildSnapshot(playerId);
   }
 
+  getObserverSnapshot(): ObserverSnapshot {
+    const world = this.storage.getWorld();
+    return {
+      committed_tick: world.committedTick,
+      map: renderForObserver(world),
+      players: Object.values(world.players).map((player) => ({
+        id: player.id,
+        name: player.name,
+        pos: { ...player.pos },
+        hp: player.hp,
+        max_hp: player.maxHp,
+        alive: player.alive,
+      })),
+      mobs: Object.values(world.mobs).map((mob) => ({
+        id: mob.id,
+        kind: mob.kind,
+        pos: { ...mob.pos },
+        hp: mob.hp,
+        max_hp: mob.maxHp,
+        alive: mob.alive,
+      })),
+      items: Object.values(world.items).map((item) => ({
+        id: item.id,
+        kind: item.kind,
+        pos: { ...item.pos },
+      })),
+    };
+  }
+
+  onTick(listener: (snapshot: ObserverSnapshot) => void): () => void {
+    this.tickListeners.add(listener);
+    return () => {
+      this.tickListeners.delete(listener);
+    };
+  }
+
   private seedInitialMobsAndItems(): void {
     const world = this.storage.getWorld();
     for (let i = 0; i < this.config.initialMobCount; i += 1) {
@@ -239,7 +277,18 @@ export class GameShard {
 
     world.committedTick = nextTick;
     this.storage.setWorld(world);
+    this.notifyTickListeners();
     this.flushWaiters();
+  }
+
+  private notifyTickListeners(): void {
+    if (this.tickListeners.size === 0) {
+      return;
+    }
+    const snapshot = this.getObserverSnapshot();
+    for (const listener of this.tickListeners) {
+      listener(snapshot);
+    }
   }
 
   private chooseMobIntent(world: WorldState, mob: Mob): Intent {

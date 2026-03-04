@@ -3,6 +3,15 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev:server": "bun run index.ts",
+    "dev:frontend": "cd frontend && bun run dev",
+    "build:frontend": "cd frontend && bun run build",
+    "preview:frontend": "cd frontend && bun run preview"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },

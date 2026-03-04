@@ -1,4 +1,4 @@
-import { canSee, LEGEND, type Pos, type Snapshot, type WorldState } from "../world";
+import { canSee, LEGEND, type ObserverSnapshot, type Pos, type Snapshot, type WorldState } from "../world";
 
 export type RenderOutput = Pick<Snapshot, "view" | "visible">;
 
@@ -94,5 +94,59 @@ export function renderForPlayer(world: WorldState, playerId: string): RenderOutp
       mobs: visibleMobs,
       items: visibleItems,
     },
+  };
+}
+
+export function renderForObserver(world: WorldState): ObserverSnapshot["map"] {
+  const playersByPos = new Map<string, number>();
+  for (const player of Object.values(world.players)) {
+    if (!player.alive) continue;
+    playersByPos.set(posKey(player.pos), (playersByPos.get(posKey(player.pos)) ?? 0) + 1);
+  }
+
+  const mobsByPos = new Map<string, number>();
+  for (const mob of Object.values(world.mobs)) {
+    if (!mob.alive) continue;
+    mobsByPos.set(posKey(mob.pos), (mobsByPos.get(posKey(mob.pos)) ?? 0) + 1);
+  }
+
+  const itemsByPos = new Map<string, number>();
+  for (const item of Object.values(world.items)) {
+    itemsByPos.set(posKey(item.pos), (itemsByPos.get(posKey(item.pos)) ?? 0) + 1);
+  }
+
+  const ascii: string[] = [];
+  for (let y = 0; y < world.height; y += 1) {
+    let row = "";
+    for (let x = 0; x < world.width; x += 1) {
+      const key = `${x},${y}`;
+      const hasPlayers = (playersByPos.get(key) ?? 0) > 0;
+      const hasMobs = (mobsByPos.get(key) ?? 0) > 0;
+      const hasItems = (itemsByPos.get(key) ?? 0) > 0;
+
+      if (hasPlayers) {
+        row += "p";
+      } else if (hasMobs) {
+        row += "m";
+      } else if (hasItems) {
+        row += "i";
+      } else {
+        row += world.tiles[y]?.[x] === "wall" ? "#" : ".";
+      }
+    }
+    ascii.push(row);
+  }
+
+  return {
+    ascii,
+    legend: {
+      "#": "Wall",
+      ".": "Floor",
+      p: "Player",
+      m: "Mob",
+      i: "Item",
+    },
+    width: world.width,
+    height: world.height,
   };
 }

@@ -28,6 +28,7 @@ Implemented as a single-process, single-shard server with in-memory storage:
 - Personalized fog-of-war ASCII snapshots
 - Filtered per-player event feed (visible vs audible)
 - Long-poll state waiting (`/wait_state`)
+- Live observer stream via WebSocket (`/ws/observer`) and debug page (`/observer`)
 
 ## Non-Goals (MVP)
 
@@ -35,7 +36,7 @@ Not yet included in MVP:
 
 - Durable storage (Postgres)
 - MCP adapter layer
-- Spectator websocket UI
+- Advanced spectator UX beyond the basic live observer page
 - Multi-shard world routing
 - Advanced diplomacy/reputation systems
 - Action point economy and rich ability trees
@@ -128,6 +129,18 @@ Immediate read of the latest committed snapshot for that player.
 
 Basic liveness and current tick.
 
+### `GET /observer`
+
+Debug web page for a real-time world observer view.
+
+### `GET /observer_state`
+
+Immediate observer snapshot (full map + all entities).
+
+### `GET /ws/observer`
+
+WebSocket feed that pushes observer snapshots each committed tick.
+
 ## Snapshot Contract
 
 Each state response returns:
@@ -149,6 +162,17 @@ Each state response returns:
 - `events[]`:
   - Messages visible/audible to this player from recent resolution
 
+Observer snapshot (`/observer_state` and `/ws/observer`) returns:
+
+- `committed_tick`
+- `map`:
+  - `ascii[]`
+  - `legend`
+  - `width`, `height`
+- `players[]`
+- `mobs[]`
+- `items[]`
+
 ## Module Map
 
 - `src/server.ts` - Bun HTTP bootstrap and route handling
@@ -158,6 +182,7 @@ Each state response returns:
 - `src/sim/render/ascii.ts` - Player-specific ASCII rendering
 - `src/sim/actions.ts` - Intent validation and action application
 - `src/storage/memory.ts` - In-memory repositories and event cursors
+- `frontend/` - Dedicated React + Vite observer client
 
 ## Local Development
 
@@ -167,11 +192,34 @@ Install dependencies:
 bun install
 ```
 
+This repo uses Bun workspaces (`frontend`), so root install covers both backend and frontend dependencies.
+
 Run server:
 
 ```bash
-bun run index.ts
+bun run dev:server
 ```
+
+Run dedicated frontend:
+
+```bash
+bun run dev:frontend
+```
+
+Open [http://localhost:5173](http://localhost:5173). The Vite app proxies API and WebSocket traffic to the backend target from frontend env vars.
+Defaults:
+- `BACKEND_HOST=localhost`
+- `BACKEND_PORT=3000`
+- `BACKEND_PROTOCOL=http`
+
+If your backend runs on a different port (for example `3001`), run:
+
+```bash
+cd frontend && BACKEND_PORT=3001 bun run dev
+```
+
+Or create `frontend/.env` from `frontend/.env.example`.
+The frontend includes a human-agent simulator panel: join as a player, submit intents (`move`, `wait`, `attack`, `pickup`) with optional emote text, refresh with `/state`, and block on `/wait_state` for next-tick progression.
 
 Run tests:
 
