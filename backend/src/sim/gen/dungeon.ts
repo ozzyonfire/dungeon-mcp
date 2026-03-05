@@ -5,6 +5,15 @@ export type DungeonGenResult = {
   walkable: Pos[];
 };
 
+type Room = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  cx: number;
+  cy: number;
+};
+
 function mulberry32(seed: number): () => number {
   let t = seed >>> 0;
   return () => {
@@ -17,34 +26,131 @@ function mulberry32(seed: number): () => number {
 
 export function generateDungeon(seed: number, width: number, height: number): DungeonGenResult {
   const rng = mulberry32(seed);
-  const tiles: TileType[][] = Array.from({ length: height }, (_, y) =>
-    Array.from({ length: width }, (_, x) => {
-      if (x === 0 || y === 0 || x === width - 1 || y === height - 1) {
-        return "wall";
-      }
-      return "floor";
-    }),
+  const tiles: TileType[][] = Array.from({ length: height }, () =>
+    Array.from({ length: width }, () => "wall"),
   );
 
-  const wallChance = 0.12;
-  for (let y = 1; y < height - 1; y += 1) {
-    for (let x = 1; x < width - 1; x += 1) {
-      if (rng() < wallChance) {
-        const row = tiles[y];
-        if (row) {
-          row[x] = "wall";
-        }
+  const rooms: Room[] = [];
+  const minRoomSize = 4;
+  const maxRoomSize = 10;
+  const maxPlacementAttempts = 200;
+
+  function randomInt(min: number, max: number): number {
+    return Math.floor(rng() * (max - min + 1)) + min;
+  }
+
+  function roomOverlaps(candidate: Room, existing: Room): boolean {
+    const pad = 1;
+    const cLeft = candidate.x - pad;
+    const cRight = candidate.x + candidate.w - 1 + pad;
+    const cTop = candidate.y - pad;
+    const cBottom = candidate.y + candidate.h - 1 + pad;
+
+    const eLeft = existing.x;
+    const eRight = existing.x + existing.w - 1;
+    const eTop = existing.y;
+    const eBottom = existing.y + existing.h - 1;
+
+    return !(cRight < eLeft || cLeft > eRight || cBottom < eTop || cTop > eBottom);
+  }
+
+  function carveAt(x: number, y: number): void {
+    if (x <= 0 || y <= 0 || x >= width - 1 || y >= height - 1) {
+      return;
+    }
+    const row = tiles[y];
+    if (row) {
+      row[x] = "floor";
+    }
+  }
+
+  function carveRoom(room: Room): void {
+    for (let y = room.y; y < room.y + room.h; y += 1) {
+      for (let x = room.x; x < room.x + room.w; x += 1) {
+        carveAt(x, y);
       }
     }
   }
 
-  const cx = Math.floor(width / 2);
-  const cy = Math.floor(height / 2);
-  for (let y = Math.max(1, cy - 1); y <= Math.min(height - 2, cy + 1); y += 1) {
-    for (let x = Math.max(1, cx - 1); x <= Math.min(width - 2, cx + 1); x += 1) {
-      const row = tiles[y];
-      if (row) {
-        row[x] = "floor";
+  function carveCorridor(from: Room, to: Room): void {
+    const horizontalFirst = rng() < 0.5;
+    if (horizontalFirst) {
+      const stepX = from.cx <= to.cx ? 1 : -1;
+      for (let x = from.cx; x !== to.cx + stepX; x += stepX) {
+        carveAt(x, from.cy);
+      }
+      const stepY = from.cy <= to.cy ? 1 : -1;
+      for (let y = from.cy; y !== to.cy + stepY; y += stepY) {
+        carveAt(to.cx, y);
+      }
+      return;
+    }
+
+    const stepY = from.cy <= to.cy ? 1 : -1;
+    for (let y = from.cy; y !== to.cy + stepY; y += stepY) {
+      carveAt(from.cx, y);
+    }
+    const stepX = from.cx <= to.cx ? 1 : -1;
+    for (let x = from.cx; x !== to.cx + stepX; x += stepX) {
+      carveAt(x, to.cy);
+    }
+  }
+
+  for (let i = 0; i < maxPlacementAttempts; i += 1) {
+    const w = randomInt(minRoomSize, Math.min(maxRoomSize, Math.max(minRoomSize, width - 2)));
+    const h = randomInt(minRoomSize, Math.min(maxRoomSize, Math.max(minRoomSize, height - 2)));
+    if (width - w - 1 <= 1 || height - h - 1 <= 1) {
+      continue;
+    }
+
+    const x = randomInt(1, width - w - 1);
+    const y = randomInt(1, height - h - 1);
+
+    const room: Room = {
+      x,
+      y,
+      w,
+      h,
+      cx: x + Math.floor(w / 2),
+      cy: y + Math.floor(h / 2),
+    };
+
+    if (rooms.some((other) => roomOverlaps(room, other))) {
+      continue;
+    }
+
+    rooms.push(room);
+  }
+
+  if (rooms.length === 0) {
+    const cx = Math.floor(width / 2);
+    const cy = Math.floor(height / 2);
+    for (let y = Math.max(1, cy - 1); y <= Math.min(height - 2, cy + 1); y += 1) {
+      for (let x = Math.max(1, cx - 1); x <= Math.min(width - 2, cx + 1); x += 1) {
+        carveAt(x, y);
+      }
+    }
+  } else {
+    for (const room of rooms) {
+      carveRoom(room);
+    }
+
+    const sorted = [...rooms].sort((a, b) => a.cx - b.cx || a.cy - b.cy);
+    for (let i = 0; i < sorted.length - 1; i += 1) {
+      const from = sorted[i];
+      const to = sorted[i + 1];
+      if (from && to) {
+        carveCorridor(from, to);
+      }
+    }
+
+    for (let i = 0; i < sorted.length - 1; i += 1) {
+      if (rng() >= 0.15) continue;
+      const from = sorted[i];
+      const j = randomInt(i + 1, sorted.length - 1);
+      const to = sorted[j];
+      if (from && to) {
+        carveCorridor(from, to);
       }
     }
   }

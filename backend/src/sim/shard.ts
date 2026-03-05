@@ -29,6 +29,7 @@ export type ShardConfig = {
 };
 
 export type ActionTickStatus = "unspecified" | "stale" | "current" | "ahead";
+const GOAL_REVEAL_TICK = 50;
 
 type Waiter = {
   playerId: string;
@@ -47,6 +48,11 @@ function itemKindByRoll(roll: number): string {
 
 export function createInitialWorld(config: ShardConfig): WorldState {
   const dungeon = generateDungeon(config.mapSeed, config.width, config.height);
+  const center = { x: Math.floor(config.width / 2), y: Math.floor(config.height / 2) };
+  const goalPos = dungeon.walkable.reduce<Pos>(
+    (best, pos) => (manhattan(pos, center) > manhattan(best, center) ? pos : best),
+    dungeon.walkable[0] ?? { x: 1, y: 1 },
+  );
   return {
     seed: config.mapSeed,
     width: config.width,
@@ -54,6 +60,10 @@ export function createInitialWorld(config: ShardConfig): WorldState {
     visionRadius: config.visionRadius,
     hearingRadius: config.hearingRadius,
     committedTick: 0,
+    goal: {
+      pos: { ...goalPos },
+      revealAtTick: GOAL_REVEAL_TICK,
+    },
     tiles: dungeon.tiles,
     players: {},
     mobs: {},
@@ -92,6 +102,7 @@ export class GameShard {
 
     const world = createInitialWorld(config);
     this.storage = storage ?? new InMemoryStorage(world);
+    this.occupiedSpawns.add(`${world.goal.pos.x},${world.goal.pos.y}`);
 
     this.seedInitialMobsAndItems();
   }
@@ -124,6 +135,7 @@ export class GameShard {
       maxHp: 12,
       speed: 10,
       alive: true,
+      escaped: false,
       lastActionResult: "Joined the dungeon.",
       inventory: [],
     };
@@ -276,6 +288,18 @@ export class GameShard {
       this.publishActionEvent(world, player, submitted?.emote, result, nextTick);
     }
 
+    for (const player of Object.values(world.players)) {
+      if (!player.alive || player.escaped) continue;
+      const goalVisible = nextTick >= world.goal.revealAtTick;
+      if (!goalVisible) continue;
+      if (player.pos.x === world.goal.pos.x && player.pos.y === world.goal.pos.y) {
+        player.escaped = true;
+        player.alive = false;
+        player.lastActionResult = "You found the escape tile and escaped the dungeon.";
+        this.storage.pushPlayerEvent(player.id, nextTick, "Escape successful.");
+      }
+    }
+
     for (const mob of mobOrderForTick(world)) {
       const mobIntent = this.chooseMobIntent(world, mob);
       const result = applyIntent(world, mob, mobIntent);
@@ -393,6 +417,7 @@ export class GameShard {
         hp: player.hp,
         max_hp: player.maxHp,
         alive: player.alive,
+        escaped: player.escaped,
         last_action_result: player.lastActionResult,
       },
       view: rendered.view,
@@ -424,8 +449,8 @@ export class GameShard {
 export function defaultShardConfig(): ShardConfig {
   return {
     tickMs: Number(process.env.TICK_MS ?? 2000),
-    width: Number(process.env.MAP_WIDTH ?? 30),
-    height: Number(process.env.MAP_HEIGHT ?? 16),
+    width: Number(process.env.MAP_WIDTH ?? 60),
+    height: Number(process.env.MAP_HEIGHT ?? 36),
     mapSeed: Number(process.env.MAP_SEED ?? 1337),
     visionRadius: Number(process.env.VISION_RADIUS ?? 5),
     hearingRadius: Number(process.env.HEARING_RADIUS ?? 7),

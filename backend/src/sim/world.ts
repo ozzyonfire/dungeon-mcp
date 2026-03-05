@@ -33,6 +33,7 @@ export type ActorBase = EntityBase & {
 export type Player = ActorBase & {
   name: string;
   inventory: string[];
+  escaped: boolean;
 };
 
 export type Mob = ActorBase & {
@@ -50,6 +51,10 @@ export type WorldState = {
   visionRadius: number;
   hearingRadius: number;
   committedTick: number;
+  goal: {
+    pos: Pos;
+    revealAtTick: number;
+  };
   tiles: TileType[][];
   players: Record<string, Player>;
   mobs: Record<string, Mob>;
@@ -71,6 +76,7 @@ export type Snapshot = {
     hp: number;
     max_hp: number;
     alive: boolean;
+    escaped: boolean;
     last_action_result: string;
   };
   view: {
@@ -120,6 +126,7 @@ export type ObserverSnapshot = {
 export const LEGEND: Record<string, string> = {
   "#": "Wall",
   ".": "Floor",
+  G: "Goal (Escape)",
   "@": "You",
   p: "Player",
   m: "Mob",

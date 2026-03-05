@@ -30,6 +30,7 @@ type PlayerSnapshot = {
     hp: number;
     max_hp: number;
     alive: boolean;
+    escaped: boolean;
     last_action_result: string;
   };
   view: {
@@ -460,6 +461,7 @@ export default function App() {
             <div className="mini-block">
               <div>tick: {playerSnapshot.committed_tick}</div>
               <div>you: {formatPos(playerSnapshot.you.pos)} | hp {playerSnapshot.you.hp}/{playerSnapshot.you.max_hp}</div>
+              <div>status: {playerSnapshot.you.escaped ? "escaped" : playerSnapshot.you.alive ? "alive" : "downed"}</div>
               <div>last action: {playerSnapshot.you.last_action_result}</div>
             </div>
           ) : null}

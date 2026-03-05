@@ -25,7 +25,7 @@ Implemented as a single-process, single-shard server with in-memory storage:
 - Non-consuming per-turn emote (`emote` field on `/act`)
 - Simple deterministic mob AI (chase nearest player, else wander)
 - Seed-based procedural map generation
-- Personalized fog-of-war ASCII snapshots
+- Personalized centered-window fog-of-war ASCII snapshots
 - Filtered per-player event feed (visible vs audible)
 - Long-poll state waiting (`/wait_state`)
 - Live observer stream via WebSocket (`/ws/observer`) and observer snapshot endpoint (`/observer_state`) with frontend polling fallback during debug
@@ -149,12 +149,13 @@ Each state response returns:
 - `player_id`
 - `you`:
   - `pos`
-  - `hp`, `max_hp`, `alive`
+  - `hp`, `max_hp`, `alive`, `escaped`
   - `last_action_result`
 - `view`:
   - `ascii[]`
   - `legend`
-  - `radius`
+  - `radius` (window size is `2*radius+1`, centered on player)
+  - `G` marks the escape goal tile after tick `50`
 - `visible`:
   - `players[]`
   - `mobs[]`
@@ -260,8 +261,8 @@ Environment variables:
 - `PORT` (default `3000`)
 - `IDLE_TIMEOUT_S` (default `120`)
 - `TICK_MS` (default `2000`)
-- `MAP_WIDTH` (default `30`)
-- `MAP_HEIGHT` (default `16`)
+- `MAP_WIDTH` (default `60`)
+- `MAP_HEIGHT` (default `36`)
 - `MAP_SEED` (default `1337`)
 - `VISION_RADIUS` (default `5`)
 - `HEARING_RADIUS` (default `7`)

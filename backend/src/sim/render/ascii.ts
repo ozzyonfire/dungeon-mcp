@@ -1,4 +1,4 @@
-import { canSee, LEGEND, type ObserverSnapshot, type Pos, type Snapshot, type WorldState } from "../world";
+import { LEGEND, type ObserverSnapshot, type Pos, type Snapshot, type WorldState } from "../world";
 
 export type RenderOutput = Pick<Snapshot, "view" | "visible">;
 
@@ -23,58 +23,61 @@ export function renderForPlayer(world: WorldState, playerId: string): RenderOutp
     };
   }
 
-  const visibleTiles = new Set<string>();
-  for (let y = 0; y < world.height; y += 1) {
-    for (let x = 0; x < world.width; x += 1) {
-      if (canSee(world, player.pos, { x, y })) {
-        visibleTiles.add(`${x},${y}`);
-      }
-    }
-  }
+  const radius = world.visionRadius;
+  const goalVisible = world.committedTick >= world.goal.revealAtTick;
+  const goalKey = `${world.goal.pos.x},${world.goal.pos.y}`;
+  const inSquareVision = (pos: Pos): boolean =>
+    Math.max(Math.abs(pos.x - player.pos.x), Math.abs(pos.y - player.pos.y)) <= radius;
 
   const visiblePlayers = Object.values(world.players)
     .filter((p) => p.id !== playerId)
-    .filter((p) => p.alive && visibleTiles.has(posKey(p.pos)))
+    .filter((p) => p.alive && inSquareVision(p.pos))
     .map((p) => ({ id: p.id, kind: "player", pos: { ...p.pos }, hp: p.hp }));
 
   const visibleMobs = Object.values(world.mobs)
-    .filter((m) => m.alive && visibleTiles.has(posKey(m.pos)))
+    .filter((m) => m.alive && inSquareVision(m.pos))
     .map((m) => ({ id: m.id, kind: m.kind, pos: { ...m.pos }, hp: m.hp }));
 
   const visibleItems = Object.values(world.items)
-    .filter((i) => visibleTiles.has(posKey(i.pos)))
+    .filter((i) => inSquareVision(i.pos))
     .map((i) => ({ id: i.id, kind: i.kind, pos: { ...i.pos } }));
 
+  const mobsByPos = new Set(visibleMobs.map((m) => posKey(m.pos)));
+  const playersByPos = new Set(visiblePlayers.map((p) => posKey(p.pos)));
+  const itemsByPos = new Set(visibleItems.map((i) => posKey(i.pos)));
+
   const ascii: string[] = [];
-  for (let y = 0; y < world.height; y += 1) {
+  for (let y = player.pos.y - radius; y <= player.pos.y + radius; y += 1) {
     let row = "";
-    for (let x = 0; x < world.width; x += 1) {
-      const key = `${x},${y}`;
-      if (!visibleTiles.has(key)) {
+    for (let x = player.pos.x - radius; x <= player.pos.x + radius; x += 1) {
+      if (x < 0 || y < 0 || x >= world.width || y >= world.height) {
         row += "?";
         continue;
       }
 
+      const key = `${x},${y}`;
       if (player.pos.x === x && player.pos.y === y) {
         row += "@";
         continue;
       }
 
-      const mob = visibleMobs.find((m) => m.pos.x === x && m.pos.y === y);
-      if (mob) {
+      if (mobsByPos.has(key)) {
         row += "m";
         continue;
       }
 
-      const otherPlayer = visiblePlayers.find((p) => p.pos.x === x && p.pos.y === y);
-      if (otherPlayer) {
+      if (playersByPos.has(key)) {
         row += "p";
         continue;
       }
 
-      const item = visibleItems.find((i) => i.pos.x === x && i.pos.y === y);
-      if (item) {
+      if (itemsByPos.has(key)) {
         row += "i";
+        continue;
+      }
+
+      if (goalVisible && key === goalKey) {
+        row += "G";
         continue;
       }
 
@@ -87,7 +90,7 @@ export function renderForPlayer(world: WorldState, playerId: string): RenderOutp
     view: {
       ascii,
       legend: LEGEND,
-      radius: world.visionRadius,
+      radius,
     },
     visible: {
       players: visiblePlayers,
@@ -98,6 +101,8 @@ export function renderForPlayer(world: WorldState, playerId: string): RenderOutp
 }
 
 export function renderForObserver(world: WorldState): ObserverSnapshot["map"] {
+  const goalVisible = world.committedTick >= world.goal.revealAtTick;
+  const goalKey = `${world.goal.pos.x},${world.goal.pos.y}`;
   const playersByPos = new Map<string, number>();
   for (const player of Object.values(world.players)) {
     if (!player.alive) continue;
@@ -130,6 +135,8 @@ export function renderForObserver(world: WorldState): ObserverSnapshot["map"] {
         row += "m";
       } else if (hasItems) {
         row += "i";
+      } else if (goalVisible && key === goalKey) {
+        row += "G";
       } else {
         row += world.tiles[y]?.[x] === "wall" ? "#" : ".";
       }
@@ -142,6 +149,7 @@ export function renderForObserver(world: WorldState): ObserverSnapshot["map"] {
     legend: {
       "#": "Wall",
       ".": "Floor",
+      G: "Goal (Escape)",
       p: "Player",
       m: "Mob",
       i: "Item",

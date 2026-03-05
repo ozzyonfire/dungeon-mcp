@@ -10,6 +10,10 @@ function testWorld(): WorldState {
     visionRadius: 3,
     hearingRadius: 5,
     committedTick: 0,
+    goal: {
+      pos: { x: 3, y: 3 },
+      revealAtTick: 50,
+    },
     tiles: [
       ["wall", "wall", "wall", "wall", "wall"],
       ["wall", "floor", "floor", "floor", "wall"],
@@ -26,6 +30,7 @@ function testWorld(): WorldState {
         maxHp: 12,
         speed: 10,
         alive: true,
+        escaped: false,
         lastActionResult: "",
         inventory: [],
       },
