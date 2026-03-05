@@ -30,6 +30,7 @@ async function parseBody(req: Request): Promise<Record<string, unknown>> {
 export function startServer(port = Number(process.env.PORT ?? 3000)) {
   const shard = new GameShard(defaultShardConfig());
   shard.start();
+  const idleTimeoutSeconds = Number(process.env.IDLE_TIMEOUT_S ?? 120);
 
   const app = new Hono();
 
@@ -42,10 +43,18 @@ export function startServer(port = Number(process.env.PORT ?? 3000)) {
       const body = await parseBody(c.req.raw);
       const name = typeof body.name === "string" ? body.name : undefined;
       const joined = shard.joinPlayer(name);
-      return c.json({ ok: true, player_id: joined.player_id, snapshot: joined.snapshot });
+      return c.json({
+        ok: true,
+        player_id: joined.player_id,
+        snapshot: joined.snapshot,
+      });
     } catch (err) {
       if (err instanceof Error && err.message === "INVALID_JSON") {
-        return apiError(400, "INVALID_JSON", "Request body must be valid JSON.");
+        return apiError(
+          400,
+          "INVALID_JSON",
+          "Request body must be valid JSON."
+        );
       }
       return apiError(500, "JOIN_FAILED", "Failed to join player.");
     }
@@ -57,24 +66,51 @@ export function startServer(port = Number(process.env.PORT ?? 3000)) {
       const player_id = body.player_id;
       const intent = body.intent;
       const emote = body.emote;
+      const client_tick = body.client_tick;
 
       if (typeof player_id !== "string" || !isIntent(intent)) {
-        return apiError(400, "INVALID_ACTION", "Body must include player_id and a valid intent.");
+        return apiError(
+          400,
+          "INVALID_ACTION",
+          "Body must include player_id and a valid intent."
+        );
       }
 
       if (emote !== undefined && typeof emote !== "string") {
-        return apiError(400, "INVALID_EMOTE", "emote must be a string if provided.");
+        return apiError(
+          400,
+          "INVALID_EMOTE",
+          "emote must be a string if provided."
+        );
       }
 
-      const result = shard.submitAction({ player_id, intent, emote });
+      if (client_tick !== undefined && !Number.isFinite(client_tick)) {
+        return apiError(
+          400,
+          "INVALID_CLIENT_TICK",
+          "client_tick must be a number if provided."
+        );
+      }
+
+      const result = shard.submitAction({
+        player_id,
+        intent,
+        emote,
+        client_tick: typeof client_tick === "number" ? client_tick : undefined,
+      });
       return c.json({
         ok: true,
         accepted_for_tick: result.acceptedForTick,
+        tick_status: result.tickStatus,
         snapshot: result.snapshot,
       });
     } catch (err) {
       if (err instanceof Error && err.message === "INVALID_JSON") {
-        return apiError(400, "INVALID_JSON", "Request body must be valid JSON.");
+        return apiError(
+          400,
+          "INVALID_JSON",
+          "Request body must be valid JSON."
+        );
       }
       if (err instanceof Error && err.message === "PLAYER_NOT_FOUND") {
         return apiError(404, "PLAYER_NOT_FOUND", "Unknown player_id.");
@@ -92,13 +128,29 @@ export function startServer(port = Number(process.env.PORT ?? 3000)) {
       const after_tick = Number(c.req.query("after_tick") ?? "0");
       const timeout_s = Number(c.req.query("timeout_s") ?? "20");
 
-      if (!player_id || !Number.isFinite(after_tick) || !Number.isFinite(timeout_s)) {
-        return apiError(400, "INVALID_QUERY", "player_id, after_tick and timeout_s are required.");
+      if (
+        !player_id ||
+        !Number.isFinite(after_tick) ||
+        !Number.isFinite(timeout_s)
+      ) {
+        return apiError(
+          400,
+          "INVALID_QUERY",
+          "player_id, after_tick and timeout_s are required."
+        );
       }
 
       const cappedTimeout = Math.max(1, Math.min(30, timeout_s));
-      const result = await shard.waitForState(player_id, after_tick, cappedTimeout);
-      return c.json({ ok: true, timed_out: !!result.timed_out, snapshot: result.snapshot });
+      const result = await shard.waitForState(
+        player_id,
+        after_tick,
+        cappedTimeout
+      );
+      return c.json({
+        ok: true,
+        timed_out: !!result.timed_out,
+        snapshot: result.snapshot,
+      });
     } catch (err) {
       if (err instanceof Error && err.message === "PLAYER_NOT_FOUND") {
         return apiError(404, "PLAYER_NOT_FOUND", "Unknown player_id.");
@@ -124,29 +176,40 @@ export function startServer(port = Number(process.env.PORT ?? 3000)) {
   });
 
   app.get("/health", () => {
-    return Response.json({ ok: true, committed_tick: shard.getCommittedTick() });
+    return Response.json({
+      ok: true,
+      committed_tick: shard.getCommittedTick(),
+    });
   });
 
   app.notFound(() => apiError(404, "NOT_FOUND", "Route not found."));
 
   const server = Bun.serve({
     port,
+    idleTimeout: idleTimeoutSeconds,
     websocket: {
       open(ws) {
         ws.subscribe("observer");
-        ws.send(JSON.stringify({ type: "observer_state", snapshot: shard.getObserverSnapshot() }));
+        ws.send(
+          JSON.stringify({
+            type: "observer_state",
+            snapshot: shard.getObserverSnapshot(),
+          })
+        );
       },
-      message() {
-      },
-      close() {
-      },
+      message() {},
+      close() {},
     },
     fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === "/ws/observer" && req.method === "GET") {
         const upgraded = server.upgrade(req);
         if (upgraded) return;
-        return apiError(400, "WS_UPGRADE_FAILED", "Could not upgrade websocket request.");
+        return apiError(
+          400,
+          "WS_UPGRADE_FAILED",
+          "Could not upgrade websocket request."
+        );
       }
       return app.fetch(req);
     },
@@ -157,7 +220,10 @@ export function startServer(port = Number(process.env.PORT ?? 3000)) {
   });
 
   shard.onTick((snapshot) => {
-    server.publish("observer", JSON.stringify({ type: "observer_state", snapshot }));
+    server.publish(
+      "observer",
+      JSON.stringify({ type: "observer_state", snapshot })
+    );
   });
 
   return {

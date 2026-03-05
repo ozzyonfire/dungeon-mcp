@@ -1,111 +1,112 @@
 ---
-description: Use Bun instead of Node.js, npm, pnpm, or vite.
-globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json"
+description: Project-specific guidance for dungeon-mcp workspace (backend, frontend, mcp).
+globs: "**/*"
 alwaysApply: false
 ---
 
-Default to using Bun instead of Node.js.
+# dungeon-mcp Contributor Guide
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+This repository is a Bun workspace with three packages:
 
-## APIs
+- `backend/`: game simulation + HTTP/WebSocket server
+- `frontend/`: Vite + React observer and human-agent simulator UI
+- `mcp/`: stdio MCP server that forwards tool calls to backend HTTP APIs
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+## Core Principles
 
-## Testing
+- Prefer Bun tooling (`bun install`, `bun run`, `bun test`, `bunx`) over npm/pnpm/yarn.
+- Keep the backend API authoritative for game state transitions.
+- Frontend and MCP are adapters over backend APIs; avoid duplicating game logic there.
+- Preserve deterministic tick behavior in simulation changes.
 
-Use `bun test` to run tests.
+## Workspace Commands
 
-```ts#index.test.ts
-import { test, expect } from "bun:test";
+Run from repo root:
 
-test("hello world", () => {
-  expect(1).toBe(1);
-});
-```
+- Install all workspace deps: `bun install`
+- Backend dev server (debug tick default): `bun run dev:server`
+- Backend tests: `bun run test:backend`
+- Backend typecheck: `bun run typecheck:backend`
+- Frontend dev: `bun run dev:frontend`
+- Frontend build: `bun run build:frontend`
+- MCP dev (stdio): `bun run dev:mcp`
+- MCP typecheck: `bun run typecheck:mcp`
 
-## Frontend
+## Backend (`backend/`)
 
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
+- Entry: `backend/index.ts`
+- Server/router: `backend/src/server.ts` (Hono + `Bun.serve`)
+- Simulation loop: `backend/src/sim/shard.ts`
+- Game rules/actions: `backend/src/sim/actions.ts`
+- Rendering: `backend/src/sim/render/ascii.ts`
+- In-memory state: `backend/src/storage/memory.ts`
 
-Server:
+### Backend Conventions
 
-```ts#index.ts
-import index from "./index.html"
+- Keep API error responses consistent (`{ ok: false, error: { code, message } }`).
+- Preserve optional `client_tick` behavior: stale actions are accepted and queued.
+- WebSocket observer channel is `/ws/observer`; observer snapshot endpoint is `/observer_state`.
+- `idleTimeout` is configurable via `IDLE_TIMEOUT_S`.
 
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
-```
+## Frontend (`frontend/`)
 
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
+- Uses Vite + React.
+- In dev, call backend through Vite proxy using `/api/*` paths.
+- WebSocket endpoint uses `/ws/observer` via Vite ws proxy.
+- Do not hardcode backend port in app code; use Vite env/proxy settings.
 
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
-```
+### Frontend Conventions
 
-With the following `frontend.tsx`:
+- Keep observer and agent simulator UI resilient:
+  - WebSocket real-time updates
+  - Polling fallback for observer state
+- Agent simulator should mirror real agent flow (`join -> act -> wait_state`).
 
-```tsx#frontend.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
+## MCP (`mcp/`)
 
-// import .css files directly and it works
-import './index.css';
+- Transport: stdio (`StdioServerTransport`).
+- Server: `mcp/src/index.ts` using `@modelcontextprotocol/sdk`.
+- Use `registerTool` (not deprecated `tool`).
+- `BACKEND_URL` controls which backend instance MCP forwards to.
 
-const root = createRoot(document.body);
+## Environment Variables
 
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
+Backend:
 
-root.render(<Frontend />);
-```
+- `PORT` (default `3000`)
+- `IDLE_TIMEOUT_S` (default `120`)
+- `TICK_MS` (dev script defaults to `10000` unless overridden)
+- `MAP_WIDTH`, `MAP_HEIGHT`, `MAP_SEED`
+- `VISION_RADIUS`, `HEARING_RADIUS`
+- `INITIAL_MOBS`, `INITIAL_ITEMS`
 
-Then, run index.ts
+Frontend (Vite):
 
-```sh
-bun --hot ./index.ts
-```
+- `BACKEND_HOST` (default `localhost`)
+- `BACKEND_PORT` (default `3000`)
+- `BACKEND_PROTOCOL` (default `http`)
 
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+MCP:
+
+- `BACKEND_URL` (default `http://localhost:3000`)
+
+## Testing Expectations
+
+When changing backend simulation/API behavior:
+
+- Run `bun run typecheck:backend`
+- Run `bun run test:backend`
+
+When changing frontend behavior:
+
+- Run `bun run build:frontend`
+
+When changing MCP behavior:
+
+- Run `bun run typecheck:mcp`
+
+## Notes
+
+- `frontend/dist/` is build output.
+- Keep docs in `README.md` aligned with API/tooling changes.
+- If adding new endpoints used by agents, consider exposing them in MCP tools as well.

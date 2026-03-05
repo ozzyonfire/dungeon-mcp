@@ -28,6 +28,8 @@ export type ShardConfig = {
   initialItemCount: number;
 };
 
+export type ActionTickStatus = "unspecified" | "stale" | "current" | "ahead";
+
 type Waiter = {
   playerId: string;
   afterTick: number;
@@ -132,7 +134,7 @@ export class GameShard {
     return { player_id: playerId, snapshot };
   }
 
-  submitAction(action: PendingAction): { acceptedForTick: number; snapshot: Snapshot } {
+  submitAction(action: PendingAction): { acceptedForTick: number; snapshot: Snapshot; tickStatus: ActionTickStatus } {
     const world = this.storage.getWorld();
     const player = world.players[action.player_id];
     if (!player) {
@@ -147,7 +149,14 @@ export class GameShard {
 
     const acceptedForTick = world.committedTick + 1;
     const snapshot = this.buildSnapshot(action.player_id);
-    return { acceptedForTick, snapshot };
+    const tickStatus: ActionTickStatus = action.client_tick === undefined
+      ? "unspecified"
+      : action.client_tick < world.committedTick
+        ? "stale"
+        : action.client_tick === world.committedTick
+          ? "current"
+          : "ahead";
+    return { acceptedForTick, snapshot, tickStatus };
   }
 
   async waitForState(playerId: string, afterTick: number, timeoutSeconds: number): Promise<{ snapshot: Snapshot; timed_out?: boolean }> {

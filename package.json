@@ -3,14 +3,17 @@
   "private": true,
   "workspaces": [
     "backend",
-    "frontend"
+    "frontend",
+    "mcp"
   ],
   "scripts": {
-    "dev:server": "cd backend && bun run dev",
+    "dev:server": "cd backend && TICK_MS=${TICK_MS:-10000} bun run dev",
     "test:backend": "cd backend && bun run test",
     "typecheck:backend": "cd backend && bun run typecheck",
     "dev:frontend": "cd frontend && bun run dev",
     "build:frontend": "cd frontend && bun run build",
-    "preview:frontend": "cd frontend && bun run preview"
+    "preview:frontend": "cd frontend && bun run preview",
+    "dev:mcp": "cd mcp && bun run dev",
+    "typecheck:mcp": "cd mcp && bun run typecheck"
   }
 }

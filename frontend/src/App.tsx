@@ -82,12 +82,15 @@ export default function App() {
   const [targetId, setTargetId] = useState("");
   const [itemId, setItemId] = useState("");
   const [emote, setEmote] = useState("");
+  const [autoWaitAfterAction, setAutoWaitAfterAction] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     let mounted = true;
+    let connectTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     const fetchInitial = async () => {
       try {
@@ -129,7 +132,7 @@ export default function App() {
       ws.onclose = () => {
         if (!mounted) return;
         setStatus("reconnecting");
-        setTimeout(() => {
+        retryTimer = setTimeout(() => {
           if (mounted) connect();
         }, 1200);
       };
@@ -140,10 +143,20 @@ export default function App() {
     };
 
     fetchInitial();
-    connect();
+    // Delay the initial connect one tick to avoid React StrictMode's
+    // throwaway mount from opening/closing a socket immediately in dev.
+    connectTimer = setTimeout(connect, 0);
+
+    // Fallback polling keeps observer state fresh even if websocket drops messages.
+    const pollTimer = setInterval(() => {
+      fetchInitial().catch(() => {});
+    }, 2000);
 
     return () => {
       mounted = false;
+      if (connectTimer) clearTimeout(connectTimer);
+      if (retryTimer) clearTimeout(retryTimer);
+      clearInterval(pollTimer);
       wsRef.current?.close();
       wsRef.current = null;
     };
@@ -195,6 +208,14 @@ export default function App() {
     }
   };
 
+  const waitForNextTick = async (afterTick: number): Promise<{ timedOut: boolean; snapshot: PlayerSnapshot }> => {
+    const res = await fetch(
+      `/api/wait_state?player_id=${encodeURIComponent(playerId)}&after_tick=${afterTick}&timeout_s=20`,
+    );
+    const data = await parseJson<{ ok: boolean; timed_out: boolean; snapshot: PlayerSnapshot }>(res);
+    return { timedOut: data.timed_out, snapshot: data.snapshot };
+  };
+
   const waitNextTick = async () => {
     if (!playerId || !playerSnapshot) {
       setAgentError("Join first.");
@@ -203,15 +224,12 @@ export default function App() {
     setIsBusy(true);
     setAgentError("");
     try {
-      const res = await fetch(
-        `/api/wait_state?player_id=${encodeURIComponent(playerId)}&after_tick=${playerSnapshot.committed_tick}&timeout_s=20`,
-      );
-      const data = await parseJson<{ ok: boolean; timed_out: boolean; snapshot: PlayerSnapshot }>(res);
-      setPlayerSnapshot(data.snapshot);
+      const { timedOut, snapshot } = await waitForNextTick(playerSnapshot.committed_tick);
+      setPlayerSnapshot(snapshot);
       setAgentInfo(
-        data.timed_out
-          ? `No commit yet. Still at tick ${data.snapshot.committed_tick}`
-          : `Advanced to tick ${data.snapshot.committed_tick}`,
+        timedOut
+          ? `No commit yet. Still at tick ${snapshot.committed_tick}`
+          : `Advanced to tick ${snapshot.committed_tick}`,
       );
     } catch (err) {
       setAgentError(err instanceof Error ? err.message : "wait_state failed");
@@ -254,12 +272,31 @@ export default function App() {
         body: JSON.stringify({
           player_id: playerId,
           intent,
+          client_tick: playerSnapshot?.committed_tick,
           emote: emote.trim() ? emote.trim() : undefined,
         }),
       });
-      const data = await parseJson<{ ok: boolean; accepted_for_tick: number; snapshot: PlayerSnapshot }>(res);
+      const data = await parseJson<{
+        ok: boolean;
+        accepted_for_tick: number;
+        tick_status?: "unspecified" | "stale" | "current" | "ahead";
+        snapshot: PlayerSnapshot;
+      }>(res);
       setPlayerSnapshot(data.snapshot);
-      setAgentInfo(`Action accepted for tick ${data.accepted_for_tick}. Last commit ${data.snapshot.committed_tick}.`);
+      if (autoWaitAfterAction) {
+        const { timedOut, snapshot } = await waitForNextTick(data.snapshot.committed_tick);
+        setPlayerSnapshot(snapshot);
+        setAgentInfo(
+          timedOut
+            ? `Action queued for tick ${data.accepted_for_tick}, still waiting at tick ${snapshot.committed_tick}.`
+            : `Action resolved at tick ${snapshot.committed_tick}.`,
+        );
+      } else {
+        const tickStatus = data.tick_status ? ` (${data.tick_status})` : "";
+        setAgentInfo(
+          `Action accepted for tick ${data.accepted_for_tick}. Last commit ${data.snapshot.committed_tick}${tickStatus}.`,
+        );
+      }
     } catch (err) {
       setAgentError(err instanceof Error ? err.message : "Action failed");
     } finally {
@@ -322,6 +359,17 @@ export default function App() {
           <div className="control-row">
             <button disabled={isBusy || !playerId} onClick={refreshPlayerState}>Refresh /state</button>
             <button disabled={isBusy || !playerId} onClick={waitNextTick}>Wait Next Tick</button>
+          </div>
+
+          <div className="control-row">
+            <label className="mini checkbox-label">
+              <input
+                type="checkbox"
+                checked={autoWaitAfterAction}
+                onChange={(e) => setAutoWaitAfterAction(e.target.checked)}
+              />
+              Auto-wait for action resolution
+            </label>
           </div>
 
           <div className="status-row">

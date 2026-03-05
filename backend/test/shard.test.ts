@@ -71,4 +71,24 @@ describe("shard integration", () => {
     expect(observer.mobs.length).toBe(config().initialMobCount);
     expect(observer.items.length).toBe(config().initialItemCount);
   });
+
+  test("stale client tick is accepted and queued", async () => {
+    const shard = new GameShard(config());
+    shard.start();
+    const joined = shard.joinPlayer("stale-client");
+
+    const act = shard.submitAction({
+      player_id: joined.player_id,
+      intent: { type: "move", dir: "E" },
+      client_tick: -10,
+    });
+
+    expect(act.tickStatus).toBe("stale");
+    expect(act.acceptedForTick).toBeGreaterThan(joined.snapshot.committed_tick);
+
+    const resolved = await shard.waitForState(joined.player_id, joined.snapshot.committed_tick, 2);
+    expect(resolved.snapshot.committed_tick).toBeGreaterThan(joined.snapshot.committed_tick);
+
+    shard.stop();
+  });
 });

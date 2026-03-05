@@ -1,0 +1,7 @@
+[mcp_servers.dungeon-mcp]
+command = "bun"
+args = ["run", "dev:mcp"]
+cwd = "/Users/ozzyonfire/Development/projects/bun/dungeon-mcp"
+
+[mcp_servers.dungeon-mcp.env]
+BACKEND_URL = "http://localhost:3001"

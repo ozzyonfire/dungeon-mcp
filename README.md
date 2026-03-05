@@ -28,7 +28,7 @@ Implemented as a single-process, single-shard server with in-memory storage:
 - Personalized fog-of-war ASCII snapshots
 - Filtered per-player event feed (visible vs audible)
 - Long-poll state waiting (`/wait_state`)
-- Live observer stream via WebSocket (`/ws/observer`) and observer snapshot endpoint (`/observer_state`)
+- Live observer stream via WebSocket (`/ws/observer`) and observer snapshot endpoint (`/observer_state`) with frontend polling fallback during debug
 
 ## Non-Goals (MVP)
 
@@ -93,6 +93,7 @@ Request body:
 {
   "player_id": "p1",
   "intent": { "type": "move", "dir": "N" },
+  "client_tick": 42,
   "emote": "For glory"
 }
 ```
@@ -110,9 +111,12 @@ Response:
 {
   "ok": true,
   "accepted_for_tick": 7,
+  "tick_status": "current",
   "snapshot": { "committed_tick": 6 }
 }
 ```
+
+`client_tick` is optional and informational. Stale actions are still accepted and queued for the next tick; `tick_status` reports `stale|current|ahead|unspecified`.
 
 ### `GET /wait_state?player_id=...&after_tick=...&timeout_s=...`
 
@@ -196,10 +200,28 @@ Run server:
 bun run dev:server
 ```
 
+`dev:server` defaults to `TICK_MS=10000` for debugging cadence. Override with:
+
+```bash
+TICK_MS=2000 bun run dev:server
+```
+
 Run dedicated frontend:
 
 ```bash
 bun run dev:frontend
+```
+
+Run MCP server (stdio):
+
+```bash
+bun run dev:mcp
+```
+
+By default, MCP forwards tool calls to `http://localhost:3000`. Override with:
+
+```bash
+BACKEND_URL=http://localhost:3001 bun run dev:mcp
 ```
 
 Open [http://localhost:5173](http://localhost:5173). The Vite app proxies API and WebSocket traffic to the backend target from frontend env vars.
@@ -228,6 +250,7 @@ Type-check:
 
 ```bash
 bun run typecheck:backend
+bun run typecheck:mcp
 ```
 
 ## Configuration
@@ -235,6 +258,7 @@ bun run typecheck:backend
 Environment variables:
 
 - `PORT` (default `3000`)
+- `IDLE_TIMEOUT_S` (default `120`)
 - `TICK_MS` (default `2000`)
 - `MAP_WIDTH` (default `30`)
 - `MAP_HEIGHT` (default `16`)

@@ -141,6 +141,12 @@ body {
   font-size: 0.8rem;
 }
 
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .mini-block {
   margin-top: 0.6rem;
   display: grid;

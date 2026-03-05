@@ -4,6 +4,7 @@ export type PendingAction = {
   player_id: string;
   intent: Intent;
   emote?: string;
+  client_tick?: number;
 };
 
 export interface StorageAdapter {
