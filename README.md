@@ -28,7 +28,7 @@ Implemented as a single-process, single-shard server with in-memory storage:
 - Personalized fog-of-war ASCII snapshots
 - Filtered per-player event feed (visible vs audible)
 - Long-poll state waiting (`/wait_state`)
-- Live observer stream via WebSocket (`/ws/observer`) and debug page (`/observer`)
+- Live observer stream via WebSocket (`/ws/observer`) and observer snapshot endpoint (`/observer_state`)
 
 ## Non-Goals (MVP)
 
@@ -129,10 +129,6 @@ Immediate read of the latest committed snapshot for that player.
 
 Basic liveness and current tick.
 
-### `GET /observer`
-
-Debug web page for a real-time world observer view.
-
 ### `GET /observer_state`
 
 Immediate observer snapshot (full map + all entities).
@@ -175,13 +171,13 @@ Observer snapshot (`/observer_state` and `/ws/observer`) returns:
 
 ## Module Map
 
-- `src/server.ts` - Bun HTTP bootstrap and route handling
-- `src/sim/shard.ts` - Tick scheduler, action queue, deterministic commit
-- `src/sim/world.ts` - Domain types and world helpers
-- `src/sim/gen/dungeon.ts` - Seed-based dungeon generation
-- `src/sim/render/ascii.ts` - Player-specific ASCII rendering
-- `src/sim/actions.ts` - Intent validation and action application
-- `src/storage/memory.ts` - In-memory repositories and event cursors
+- `backend/src/server.ts` - Bun HTTP bootstrap and route handling
+- `backend/src/sim/shard.ts` - Tick scheduler, action queue, deterministic commit
+- `backend/src/sim/world.ts` - Domain types and world helpers
+- `backend/src/sim/gen/dungeon.ts` - Seed-based dungeon generation
+- `backend/src/sim/render/ascii.ts` - Player-specific ASCII rendering
+- `backend/src/sim/actions.ts` - Intent validation and action application
+- `backend/src/storage/memory.ts` - In-memory repositories and event cursors
 - `frontend/` - Dedicated React + Vite observer client
 
 ## Local Development
@@ -192,7 +188,7 @@ Install dependencies:
 bun install
 ```
 
-This repo uses Bun workspaces (`frontend`), so root install covers both backend and frontend dependencies.
+This repo uses Bun workspaces (`backend`, `frontend`), so root install covers both packages.
 
 Run server:
 
@@ -207,6 +203,7 @@ bun run dev:frontend
 ```
 
 Open [http://localhost:5173](http://localhost:5173). The Vite app proxies API and WebSocket traffic to the backend target from frontend env vars.
+In dev, frontend requests use `/api/*` and Vite rewrites that prefix to backend routes.
 Defaults:
 - `BACKEND_HOST=localhost`
 - `BACKEND_PORT=3000`
@@ -224,13 +221,13 @@ The frontend includes a human-agent simulator panel: join as a player, submit in
 Run tests:
 
 ```bash
-bun test
+bun run test:backend
 ```
 
 Type-check:
 
 ```bash
-bunx tsc --noEmit
+bun run typecheck:backend
 ```
 
 ## Configuration

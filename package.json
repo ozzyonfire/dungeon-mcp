@@ -1,21 +1,16 @@
 {
   "name": "dungeon-mcp",
-  "module": "index.ts",
-  "type": "module",
   "private": true,
   "workspaces": [
+    "backend",
     "frontend"
   ],
   "scripts": {
-    "dev:server": "bun run index.ts",
+    "dev:server": "cd backend && bun run dev",
+    "test:backend": "cd backend && bun run test",
+    "typecheck:backend": "cd backend && bun run typecheck",
     "dev:frontend": "cd frontend && bun run dev",
     "build:frontend": "cd frontend && bun run build",
     "preview:frontend": "cd frontend && bun run preview"
-  },
-  "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
   }
 }

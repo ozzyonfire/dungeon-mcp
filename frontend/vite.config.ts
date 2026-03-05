@@ -14,12 +14,10 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       proxy: {
-        "/join": backendOrigin,
-        "/act": backendOrigin,
-        "/state": backendOrigin,
-        "/wait_state": backendOrigin,
-        "/observer_state": backendOrigin,
-        "/health": backendOrigin,
+        "/api": {
+          target: backendOrigin,
+          rewrite: (path) => path.replace(/^\/api/, ""),
+        },
         "/ws": {
           target: backendWsOrigin,
           ws: true,

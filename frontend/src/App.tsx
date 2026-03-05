@@ -91,7 +91,7 @@ export default function App() {
 
     const fetchInitial = async () => {
       try {
-        const res = await fetch("/observer_state");
+        const res = await fetch("/api/observer_state");
         const data = await parseJson<{ ok: boolean; snapshot?: ObserverSnapshot }>(res);
         if (mounted && data.ok && data.snapshot) {
           setSnapshot(data.snapshot);
@@ -160,7 +160,7 @@ export default function App() {
     setAgentError("");
     setAgentInfo("");
     try {
-      const res = await fetch("/join", {
+      const res = await fetch("/api/join", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: playerName.trim() || undefined }),
@@ -184,7 +184,7 @@ export default function App() {
     setIsBusy(true);
     setAgentError("");
     try {
-      const res = await fetch(`/state?player_id=${encodeURIComponent(playerId)}`);
+      const res = await fetch(`/api/state?player_id=${encodeURIComponent(playerId)}`);
       const data = await parseJson<{ ok: boolean; snapshot: PlayerSnapshot }>(res);
       setPlayerSnapshot(data.snapshot);
       setAgentInfo(`Refreshed player state at tick ${data.snapshot.committed_tick}`);
@@ -204,7 +204,7 @@ export default function App() {
     setAgentError("");
     try {
       const res = await fetch(
-        `/wait_state?player_id=${encodeURIComponent(playerId)}&after_tick=${playerSnapshot.committed_tick}&timeout_s=20`,
+        `/api/wait_state?player_id=${encodeURIComponent(playerId)}&after_tick=${playerSnapshot.committed_tick}&timeout_s=20`,
       );
       const data = await parseJson<{ ok: boolean; timed_out: boolean; snapshot: PlayerSnapshot }>(res);
       setPlayerSnapshot(data.snapshot);
@@ -248,7 +248,7 @@ export default function App() {
     setAgentInfo("");
 
     try {
-      const res = await fetch("/act", {
+      const res = await fetch("/api/act", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
